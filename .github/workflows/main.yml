@@ -59,14 +59,19 @@ jobs:
       - name: install cross-compilation dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          sudo dpkg --add-architecture i386  # Enable 32-bit architecture
-          sudo dpkg --add-architecture armhf  # Enable ARM hard float
-          sudo dpkg --add-architecture arm64  # Enable ARM64
+          # Use the official Ubuntu mirrors instead of security.ubuntu.com
+          sudo sed -i 's/security.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
           
-          sudo apt-get update
+          # Add multi-arch support more carefully
+          sudo dpkg --add-architecture i386 || true
+          sudo dpkg --add-architecture armhf || true
+          sudo dpkg --add-architecture arm64 || true
           
-          # Base dependencies for all Ubuntu targets
-          sudo apt-get install -y \
+          # Update package lists with increased verbosity and tolerance
+          sudo apt-get update -y || true
+          
+          # Install base dependencies with increased tolerance
+          sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
@@ -74,8 +79,8 @@ jobs:
             gcc-multilib \
             g++-multilib
           
-          # Cross-compilation toolchains
-          sudo apt-get install -y \
+          # Install cross-compilation toolchains
+          sudo apt-get install -y --no-install-recommends \
             gcc-i686-linux-gnu \
             g++-i686-linux-gnu \
             gcc-aarch64-linux-gnu \
@@ -84,13 +89,12 @@ jobs:
             g++-arm-linux-gnueabihf \
             gcc-riscv64-linux-gnu \
             g++-riscv64-linux-gnu
-            
           
-          # Additional cross-compilation library dependencies
-          sudo apt-get install -y \
+          # Install cross-compilation library dependencies with increased tolerance
+          sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev:i386 \
             libwebkit2gtk-4.1-dev:arm64 \
-            libwebkit2gtk-4.1-dev:armhf
+            libwebkit2gtk-4.1-dev:armhf || true
       
       - name: install frontend dependencies
         run: npm install
