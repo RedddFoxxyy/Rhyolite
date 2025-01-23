@@ -3,42 +3,32 @@ on:
   push:
     branches:
       - master
+
 jobs:
   publish-tauri:
     permissions: 
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: write  # Ensure this is present
+      issues: write    # Optional but recommended
+      pull-requests: write  # Optional but recommended
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Existing platforms
           - platform: 'macos-latest'  # for Arm based macs (M1 and above)
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-latest'  # for Intel based macs
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
-            args: ''  # Default x86_64
-          
-          # New Ubuntu cross-compilation targets
-          - platform: 'ubuntu-22.04'
-            args: '--target i686-unknown-linux-gnu'  # 32-bit x86
-          - platform: 'ubuntu-22.04'
-            args: '--target aarch64-unknown-linux-gnu'  # ARM64
-          - platform: 'ubuntu-22.04'
-            args: '--target armv7-unknown-linux-gnueabihf'  # ARMv7 hard float
-          - platform: 'ubuntu-22.04'
-            args: '--target riscv64gc-unknown-linux-gnu'  # RISC-V 64-bit
-          
-          # Windows targets (existing)
-          - platform: 'windows-latest'
+            args: ''
+          - platform: 'windows-latest'  # Windows x64
             args: '--target x86_64-pc-windows-msvc'
-          - platform: 'windows-latest'
+          - platform: 'windows-latest'  # Windows x86 (32-bit)
             args: '--target i686-pc-windows-msvc'
-          - platform: 'windows-latest'
+          - platform: 'windows-latest'  # Windows ARM64
             args: '--target aarch64-pc-windows-msvc'
-    
+          - platform: 'ubuntu-24.04-arm'  # Ubuntu 24.04 ARM
+            args: '--target aarch64-unknown-linux-gnu'
+
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -47,64 +37,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      
-      - name: install Rust stable with cross-compilation targets
+
+      - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: >
             ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' ||
             matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc,i686-pc-windows-msvc,aarch64-pc-windows-msvc' ||
-            matrix.platform == 'ubuntu-22.04' && 'x86_64-unknown-linux-gnu,i686-unknown-linux-gnu,aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf,riscv64gc-unknown-linux-gnu' || '' }}
-      
-      - name: install cross-compilation dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          # Use the official Ubuntu mirrors instead of security.ubuntu.com
-          sudo sed -i 's/security.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
-          
-          # Add multi-arch support more carefully
-          sudo dpkg --add-architecture i386 || true
-          sudo dpkg --add-architecture armhf || true
-          sudo dpkg --add-architecture arm64 || true
-          
-          # Update package lists with increased verbosity and tolerance
-          sudo apt-get update -y || true
-          
-          # Install base dependencies with increased tolerance
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            gcc-multilib \
-            g++-multilib
-          
-          # Install cross-compilation toolchains
-          sudo apt-get install -y --no-install-recommends \
-            gcc-i686-linux-gnu \
-            g++-i686-linux-gnu \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabihf \
-            g++-arm-linux-gnueabihf \
-            gcc-riscv64-linux-gnu \
-            g++-riscv64-linux-gnu
-          
-          # Install cross-compilation library dependencies with increased tolerance
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev:i386 \
-            libwebkit2gtk-4.1-dev:arm64 \
-            libwebkit2gtk-4.1-dev:armhf || true
+            matrix.platform == 'ubuntu-24.04-arm' && 'aarch64-unknown-linux-gnu' || '' }}
 
-          # Configure pkg-config for cross-compilation
-          export PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig:/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/riscv64-linux-gnu/pkgconfig"
-          export PKG_CONFIG_SYSROOT_DIR="/usr/i386-linux-gnu:/usr/arm-linux-gnueabihf:/usr/aarch64-linux-gnu:/usr/riscv64-linux-gnu"
-          export PKG_CONFIG_ALLOW_CROSS=1
-      
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-24.04-arm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: install frontend dependencies
         run: npm install
-      
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
