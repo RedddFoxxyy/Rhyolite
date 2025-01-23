@@ -56,62 +56,52 @@ jobs:
             matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc,i686-pc-windows-msvc,aarch64-pc-windows-msvc' ||
             matrix.platform == 'ubuntu-22.04' && 'x86_64-unknown-linux-gnu,i686-unknown-linux-gnu,aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf,riscv64gc-unknown-linux-gnu' || '' }}
       
-            - name: install cross-compilation dependencies (ubuntu only)
-            if: matrix.platform == 'ubuntu-22.04'
-            run: |
-              # Use the official Ubuntu mirrors
-              sudo sed -i 's/security.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
-              
-              # Add multi-arch support
-              sudo dpkg --add-architecture i386
-              sudo dpkg --add-architecture armhf
-              sudo dpkg --add-architecture arm64
-              
-              sudo apt-get update
-              
-              # Install base and cross-compilation dependencies
-              sudo apt-get install -y \
-                libwebkit2gtk-4.1-dev \
-                libappindicator3-dev \
-                librsvg2-dev \
-                patchelf \
-                gcc-multilib \
-                g++-multilib \
-                pkg-config \
-                crossbuild-essential-arm64 \
-                crossbuild-essential-armhf
+      - name: install cross-compilation dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          # Use the official Ubuntu mirrors instead of security.ubuntu.com
+          sudo sed -i 's/security.ubuntu.com/archive.ubuntu.com/g' /etc/apt/sources.list
           
-              # Install cross-compilation toolchains and libraries
-              sudo apt-get install -y \
-                gcc-aarch64-linux-gnu \
-                g++-aarch64-linux-gnu \
-                libglib2.0-dev:arm64 \
-                libgtk-3-dev:arm64 \
-                libwebkit2gtk-4.1-dev:arm64
+          # Add multi-arch support more carefully
+          sudo dpkg --add-architecture i386 || true
+          sudo dpkg --add-architecture armhf || true
+          sudo dpkg --add-architecture arm64 || true
           
-            # Set up pkg-config for cross-compilation
-            - name: Configure pkg-config for cross-compilation
-              if: matrix.platform == 'ubuntu-22.04'
-              env:
-                TARGET: ${{ matrix.args == '--target aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu' || '' }}
-              run: |
-                if [ -n "$TARGET" ]; then
-                  # Set up pkg-config paths for cross-compilation
-                  echo "PKG_CONFIG_PATH=/usr/lib/${TARGET}/pkgconfig" >> $GITHUB_ENV
-                  echo "PKG_CONFIG_SYSROOT_DIR=/usr/${TARGET}" >> $GITHUB_ENV
-                  echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${TARGET}-gcc" >> $GITHUB_ENV
-                fi
+          # Update package lists with increased verbosity and tolerance
+          sudo apt-get update -y || true
           
+          # Install base dependencies with increased tolerance
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            gcc-multilib \
+            g++-multilib
+          
+          # Install cross-compilation toolchains
+          sudo apt-get install -y --no-install-recommends \
+            gcc-i686-linux-gnu \
+            g++-i686-linux-gnu \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            gcc-riscv64-linux-gnu \
+            g++-riscv64-linux-gnu
+          
+          # Install cross-compilation library dependencies with increased tolerance
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev:i386 \
+            libwebkit2gtk-4.1-dev:arm64 \
+            libwebkit2gtk-4.1-dev:armhf || true
+      
       - name: install frontend dependencies
         run: npm install
       
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Add cross-compilation environment variables
-          PKG_CONFIG_ALLOW_CROSS: 1
-          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-          PKG_CONFIG_SYSROOT_DIR: ${{ env.PKG_CONFIG_SYSROOT_DIR }}
         with:
           tagName: v__VERSION__
           releaseName: 'Rhyolite(v__VERSION__)'
