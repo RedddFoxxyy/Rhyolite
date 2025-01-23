@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'packaging/build.md'
 
 jobs:
   publish-tauri:
