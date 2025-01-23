@@ -3,30 +3,42 @@ on:
   push:
     branches:
       - master
-
 jobs:
   publish-tauri:
     permissions: 
-      contents: write  # Ensure this is present
-      issues: write    # Optional but recommended
-      pull-requests: write  # Optional but recommended
+      contents: write
+      issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Existing platforms
           - platform: 'macos-latest'  # for Arm based macs (M1 and above)
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-latest'  # for Intel based macs
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
-            args: ''
-          - platform: 'windows-latest'  # Windows x64
+            args: ''  # Default x86_64
+          
+          # New Ubuntu cross-compilation targets
+          - platform: 'ubuntu-22.04'
+            args: '--target i686-unknown-linux-gnu'  # 32-bit x86
+          - platform: 'ubuntu-22.04'
+            args: '--target aarch64-unknown-linux-gnu'  # ARM64
+          - platform: 'ubuntu-22.04'
+            args: '--target armv7-unknown-linux-gnueabihf'  # ARMv7 hard float
+          - platform: 'ubuntu-22.04'
+            args: '--target riscv64gc-unknown-linux-gnu'  # RISC-V 64-bit
+          
+          # Windows targets (existing)
+          - platform: 'windows-latest'
             args: '--target x86_64-pc-windows-msvc'
-          - platform: 'windows-latest'  # Windows x86 (32-bit)
+          - platform: 'windows-latest'
             args: '--target i686-pc-windows-msvc'
-          - platform: 'windows-latest'  # Windows ARM64
+          - platform: 'windows-latest'
             args: '--target aarch64-pc-windows-msvc'
-
+    
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -35,23 +47,53 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-
-      - name: install Rust stable
+      
+      - name: install Rust stable with cross-compilation targets
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: >
             ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' ||
-            matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc,i686-pc-windows-msvc,aarch64-pc-windows-msvc' || '' }}
-
-      - name: install dependencies (ubuntu only)
+            matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc,i686-pc-windows-msvc,aarch64-pc-windows-msvc' ||
+            matrix.platform == 'ubuntu-22.04' && 'x86_64-unknown-linux-gnu,i686-unknown-linux-gnu,aarch64-unknown-linux-gnu,armv7-unknown-linux-gnueabihf,riscv64gc-unknown-linux-gnu' || '' }}
+      
+      - name: install cross-compilation dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
+          sudo dpkg --add-architecture i386  # Enable 32-bit architecture
+          sudo dpkg --add-architecture armhf  # Enable ARM hard float
+          sudo dpkg --add-architecture arm64  # Enable ARM64
+          
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
+          
+          # Base dependencies for all Ubuntu targets
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            gcc-multilib \
+            g++-multilib
+          
+          # Cross-compilation toolchains
+          sudo apt-get install -y \
+            gcc-i686-linux-gnu \
+            g++-i686-linux-gnu \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            gcc-riscv64-linux-gnu \
+            g++-riscv64-linux-gnu
+          
+          # Additional cross-compilation library dependencies
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev:i386 \
+            libwebkit2gtk-4.1-dev:arm64 \
+            libwebkit2gtk-4.1-dev:armhf
+      
       - name: install frontend dependencies
         run: npm install
-
+      
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
